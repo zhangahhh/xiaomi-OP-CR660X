@@ -65,16 +65,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
       - name: 环境准备
         run: |
-          #sudo rm -rf /usr/share/dotnet /etc/mysql /etc/apt/sources.list.d /usr/local/lib/android /opt/ghc
-          #sudo -E apt-get -y purge ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* php* android*
           sudo -E apt-get update
-          # 替换 lib32gcc1 为 lib32gcc-s1，替换 libtinfo5 为 libtinfo6
+          # 修复依赖包名称，适配Ubuntu新版本
           sudo -E apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 zip unzip zlib1g-dev lib32gcc-s1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler antlr3 gperf swig libtinfo6
           sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
           df -h
+
       - name: 机型选择
         run: |
           cd preset-models ; NUMBER=$(python3 target_select.py ${{ github.event.inputs.model }}) ; cd ..
@@ -87,55 +87,73 @@ jobs:
           echo "KEY_INFO<<EOF" >> $GITHUB_ENV
           sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep -E -v '#|=' >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+
       - name: 下载源码与插件
         run: |
           chmod +x $CLONE_SH
           $CLONE_SH
+          # 假设源码克隆到openwrt目录，记录源码路径（若实际路径不同需修改）
+          echo "OPENWRT_DIR=$(pwd)/openwrt" >> $GITHUB_ENV
+
       - name: 升级feeds
         run: |
+          cd $OPENWRT_DIR  # 进入源码目录
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
       - name: 修改配置
         run: |
-          [ ${{ github.event.inputs.cpu_overclock }} == true ] && sed -i '/322-mt7621-fix-cpu-clk-add-clkdev.patch/ s/#//' $MODIFY_SH
-          [ ${{ github.event.inputs.kernel_5_15 }} == true ] && sed -i '/KERNEL_PATCHVER:=5.15/ s/#//' $MODIFY_SH
+          cd $OPENWRT_DIR  # 进入源码目录
+          # 修复条件判断语法
+          [ "${{ github.event.inputs.cpu_overclock }}" = "true" ] && sed -i '/322-mt7621-fix-cpu-clk-add-clkdev.patch/ s/#//' $MODIFY_SH
+          [ "${{ github.event.inputs.kernel_5_15 }}" = "true" ] && sed -i '/KERNEL_PATCHVER:=5.15/ s/#//' $MODIFY_SH
           chmod +x $MODIFY_SH
           $MODIFY_SH
+
       - name: 生成.config文件
         run: |
+          cd $OPENWRT_DIR  # 进入源码目录
           mv -f $CONFIG_PA ./.config
           sed -i 's/^[ \t]*//g' ./.config
           make defconfig
+
       - name: Make download
         run: |
+          cd $OPENWRT_DIR  # 进入源码目录
           make download -j8 || make download -j1 V=s
           rm -rf $(find ./dl/ -size -1024c)
           df -h
+
       - name: 编译
         run: |
-          make -j$(nproc) || make -j1 V=s
+          cd $OPENWRT_DIR  # 进入源码目录
+          make -j4 || make -j1 V=s  # 限制并发数，避免资源耗尽
           echo "======================="
           echo "Space usage:"
           echo "======================="
           df -h
           echo "======================="
           du -h ./ --max-depth=1
+
       - name: 整理固件目录
         run: |
           mkdir -p ./collected_firmware/packages
-          rm -rf $(find ./bin/targets/ -type d -name "packages")
-          cp -rf $(find ./bin/targets/ -type f) ./collected_firmware
-          cp -rf $(find ./bin/packages/ -type f -name "*.ipk") ./collected_firmware/packages
+          # 从源码目录的bin文件夹复制文件
+          rm -rf $(find $OPENWRT_DIR/bin/targets/ -type d -name "packages")
+          cp -rf $(find $OPENWRT_DIR/bin/targets/ -type f) ./collected_firmware
+          cp -rf $(find $OPENWRT_DIR/bin/packages/ -type f -name "*.ipk") ./collected_firmware/packages
           cd collected_firmware
           zip -r ./allfiles.zip ./*
           cd packages
           zip -r ../packages.zip ./*
+
       - name: 获取当前日期
         run: |
           CURRENT_TIME=$(TZ=Asia/Shanghai date +'%y.%-m.%-d.%H%M%S')
           CURRENT_TIME=${CURRENT_TIME:1}
           echo "TAG_NAME=${CURRENT_TIME}" >> $GITHUB_ENV
           echo "RELEASE_PRE=${CURRENT_TIME%.*}" >> $GITHUB_ENV
+
       - name: 上传固件到release
         id: upload-release
         if: github.event.inputs.release == 'true' && env.RELEASE_FIRMWARE_VALUE != ''
@@ -151,9 +169,10 @@ jobs:
           file_glob: true
         env:
           RELEASE_FIRMWARE_VALUE: ${{ secrets.RELEASE_FIRMWARE }}
+
       - name: 上传固件到artifact
         if: github.event.inputs.artifact == 'true' || steps.upload-release.conclusion == 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4  # 升级到最新版本
         with:
           name: collected_firmware
           path: |
