@@ -92,15 +92,20 @@ jobs:
         run: |
           chmod +x $CLONE_SH
           $CLONE_SH
-          # 假设源码克隆到openwrt目录，记录源码路径（若实际路径不同需修改）
-          echo "OPENWRT_DIR=$(pwd)/openwrt" >> $GITHUB_ENV
-
+          # 源码已被移动到当前目录，设置OPENWRT_DIR为当前路径
+          echo "OPENWRT_DIR=$(pwd)" >> $GITHUB_ENV
+          # 校验关键文件，确保脚本执行成功
+          if [ ! -f "$OPENWRT_DIR/scripts/feeds" ]; then
+            echo "❌ 源码移动失败，未找到scripts/feeds文件"
+            exit 1
+          fi
+      
       - name: 升级feeds
         run: |
-          cd $OPENWRT_DIR  # 进入源码目录
+          cd $OPENWRT_DIR  # 进入源码根目录（当前目录）
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
+          
       - name: 修改配置
         run: |
           cd $OPENWRT_DIR  # 进入源码目录
