@@ -19,7 +19,7 @@ on:
       model:
         description: '选择机型'
         required: true
-        default: 'mi-router-4a-gigabit'  # 修正选项值与默认值一致
+        default: 'mi-router-4a-gigabit'  # 修正默认机型与选项一致
         type: choice
         options:
         - mi-router-4a-gigabit
@@ -40,7 +40,7 @@ on:
       cpu_overclock:
         description: '超频到1100Mhz(仅适用于5.10内核)'
         required: false
-        default: false  # 修正boolean类型默认值（去掉引号）
+        default: false  # 修正boolean类型默认值
         type: boolean
       kernel_5_15:
         description: '使用5.15内核'
@@ -87,7 +87,7 @@ jobs:
           df -h
 
       - name: 机型选择
-        id: model-select  # 添加ID便于后续步骤依赖检查
+        id: model-select  # 保留ID用于标识步骤，但移除steps级别的needs
         run: |
           cd preset-models 
           # 增加错误处理，检查脚本是否存在
@@ -126,7 +126,7 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
       - name: 下载源码与插件
-        needs: model-select  # 依赖机型选择步骤
+        # 移除steps级别的needs（GitHub Actions不支持），步骤按顺序执行自然依赖前序步骤
         run: |
           chmod +x "$CLONE_SH"
           # 增加执行超时和错误处理
@@ -171,7 +171,7 @@ jobs:
 
       - name: 编译固件
         run: |
-          # 限制并行数避免资源耗尽（ubuntu-latest默认3核，用2核编译更稳定）
+          # 限制并行数避免资源耗尽
           make -j2 || make -j1 V=s || { echo "编译失败"; exit 1; }
           echo "======================="
           echo "空间使用情况:"
