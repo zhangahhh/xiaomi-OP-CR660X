@@ -202,7 +202,8 @@ jobs:
 
       - name: 上传固件到release
         id: upload-release
-        if: github.event.inputs.release == 'true' && ${{ secrets.RELEASE_FIRMWARE != '' }}
+        # 核心修复：完整的${{ }}包裹条件表达式
+        if: ${{ github.event.inputs.release == 'true' && secrets.RELEASE_FIRMWARE != '' }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.RELEASE_FIRMWARE }}
