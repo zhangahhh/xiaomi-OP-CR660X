@@ -70,18 +70,31 @@ jobs:
 
       - name: 环境准备
         run: |
-          # 只清理已安装的大型软件包，避免卸载不存在的包导致错误
+          # 清理系统预装的大型无用组件（减少冲突风险）
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/apt/sources.list.d /usr/local/lib/android /opt/ghc
           
-          # 先检查包是否安装，再卸载（避免因未安装包导致的错误）
+          # 强制清理APT缓存并更新源
+          sudo -E apt-get clean
+          sudo -E apt-get autoclean
+          sudo -E apt-get update -y --fix-missing
+          
+          # 卸载可能冲突的预安装包（仅卸载已存在的）
           for pkg in ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* php* android*; do
             if dpkg -l | grep -q "^ii  $pkg"; then
               sudo -E apt-get -y purge $pkg
             fi
           done
           
-          sudo -E apt-get update
-          sudo -E apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 zip unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler antlr3 gperf swig libtinfo5
+          # 安装依赖（添加--fix-broken解决依赖问题）
+          sudo -E apt-get -y install --fix-broken \
+            build-essential asciidoc binutils bzip2 gawk gettext git \
+            libncurses5-dev libz-dev patch python3 zip unzip zlib1g-dev \
+            lib32gcc1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib \
+            g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev \
+            xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint \
+            device-tree-compiler antlr3 gperf swig libtinfo5
+          
+          # 再次清理以释放空间
           sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
           df -h
