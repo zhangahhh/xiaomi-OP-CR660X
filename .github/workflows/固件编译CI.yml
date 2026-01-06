@@ -75,25 +75,33 @@ jobs:
           sudo -E apt-get clean
           df -h
 
-          - name: 机型选择
-            run: |
-              cd preset-models 
-              # 先捕获NUMBER，避免一行命令过长导致解析错误
-              NUMBER=$(python3 target_select.py ${{ github.event.inputs.model }} | tr -d ' \n\r')
-              cd ..
-              echo "你选择了：${{ github.event.inputs.model }}"
-              echo "CLONE_SH=preset-models/${NUMBER}clone.sh" >> $GITHUB_ENV
-              echo "MODIFY_SH=preset-models/${NUMBER}modify.sh" >> $GITHUB_ENV
-              echo "CONFIG_PA=preset-models/${NUMBER}.config" >> $GITHUB_ENV
-              # 修复1：单行读取release_title，避免换行问题
-              RELEASE_TITLE=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep 'release_title' | cut -d = -f 2 | tr -d '\n')
-              ZH_TITLE=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep 'zh_title' | cut -d = -f 2 | tr -d '\n')
-              # 修复2：单行读取KEY_INFO，用换行符转义替代EOF多行赋值
-              KEY_INFO=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep -E -v '#|=' | tr '\n' '\\n' | sed 's/\\n$//')
-              # 将变量写入环境变量（单行方式）
-              echo "RELEASE_TITLE=${RELEASE_TITLE}" >> $GITHUB_ENV
-              echo "ZH_TITLE=${ZH_TITLE}" >> $GITHUB_ENV
-              echo "KEY_INFO=${KEY_INFO}" >> $GITHUB_ENV
+      - name: 机型选择
+        run: |
+          # 分步执行，避免单行命令解析错误
+          cd preset-models
+          # 清理Python脚本输出（仅保留数字/字母，去除换行/空格/特殊字符）
+          NUMBER=$(python3 target_select.py "${{ github.event.inputs.model }}" | tr -cd '0-9a-zA-Z')
+          cd ..
+          
+          # 输出机型信息（仅日志用，无实际逻辑）
+          echo "你选择了：${{ github.event.inputs.model }}"
+          echo "匹配的机型编号：${NUMBER}"
+          
+          # 赋值核心环境变量（仅必要变量，暂时移除KEY_INFO等非核心变量）
+          echo "CLONE_SH=preset-models/${NUMBER}clone.sh" >> "$GITHUB_ENV"
+          echo "MODIFY_SH=preset-models/${NUMBER}modify.sh" >> "$GITHUB_ENV"
+          echo "CONFIG_PA=preset-models/${NUMBER}.config" >> "$GITHUB_ENV"
+          
+          # 【可选】如果需要RELEASE_TITLE/ZH_TITLE，用极简方式读取（避免复杂管道）
+          if [ -f "preset-models/release_content.txt" ]; then
+            RELEASE_TITLE=$(grep -A 10 "start of ${NUMBER} model" preset-models/release_content.txt | grep 'release_title' | cut -d '=' -f 2 | head -1 | xargs)
+            ZH_TITLE=$(grep -A 10 "start of ${NUMBER} model" preset-models/release_content.txt | grep 'zh_title' | cut -d '=' -f 2 | head -1 | xargs)
+            echo "RELEASE_TITLE=${RELEASE_TITLE:-未知机型}" >> "$GITHUB_ENV"
+            echo "ZH_TITLE=${ZH_TITLE:-未知标题}" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TITLE=未知机型" >> "$GITHUB_ENV"
+            echo "ZH_TITLE=未知标题" >> "$GITHUB_ENV"
+          fi
 
           - name: 下载源码与插件
             run: |
