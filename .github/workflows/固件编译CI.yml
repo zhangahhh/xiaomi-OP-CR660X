@@ -75,18 +75,25 @@ jobs:
           sudo -E apt-get clean
           df -h
 
-      - name: 机型选择
-        run: |
-          cd preset-models ; NUMBER=$(python3 target_select.py ${{ github.event.inputs.model }}) ; cd ..
-          echo "你选择了：${{ github.event.inputs.model }}"
-          echo "CLONE_SH=preset-models/${NUMBER}clone.sh" >> $GITHUB_ENV
-          echo "MODIFY_SH=preset-models/${NUMBER}modify.sh" >> $GITHUB_ENV
-          echo "CONFIG_PA=preset-models/${NUMBER}.config" >> $GITHUB_ENV
-          echo "RELEASE_TITLE=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep 'release_title' | cut -d = -f 2)" >> $GITHUB_ENV
-          echo "ZH_TITLE=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep 'zh_title' | cut -d = -f 2)" >> $GITHUB_ENV
-          echo "KEY_INFO<<EOF" >> $GITHUB_ENV
-          sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep -E -v '#|=' >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          - name: 机型选择
+            run: |
+              cd preset-models 
+              # 先捕获NUMBER，避免一行命令过长导致解析错误
+              NUMBER=$(python3 target_select.py ${{ github.event.inputs.model }} | tr -d ' \n\r')
+              cd ..
+              echo "你选择了：${{ github.event.inputs.model }}"
+              echo "CLONE_SH=preset-models/${NUMBER}clone.sh" >> $GITHUB_ENV
+              echo "MODIFY_SH=preset-models/${NUMBER}modify.sh" >> $GITHUB_ENV
+              echo "CONFIG_PA=preset-models/${NUMBER}.config" >> $GITHUB_ENV
+              # 修复1：单行读取release_title，避免换行问题
+              RELEASE_TITLE=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep 'release_title' | cut -d = -f 2 | tr -d '\n')
+              ZH_TITLE=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep 'zh_title' | cut -d = -f 2 | tr -d '\n')
+              # 修复2：单行读取KEY_INFO，用换行符转义替代EOF多行赋值
+              KEY_INFO=$(sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep -E -v '#|=' | tr '\n' '\\n' | sed 's/\\n$//')
+              # 将变量写入环境变量（单行方式）
+              echo "RELEASE_TITLE=${RELEASE_TITLE}" >> $GITHUB_ENV
+              echo "ZH_TITLE=${ZH_TITLE}" >> $GITHUB_ENV
+              echo "KEY_INFO=${KEY_INFO}" >> $GITHUB_ENV
 
           - name: 下载源码与插件
             run: |
