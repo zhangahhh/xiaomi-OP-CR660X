@@ -88,17 +88,26 @@ jobs:
           sed -n "/start of ${NUMBER} model/,/end of ${NUMBER} model/p" preset-models/release_content.txt | grep -E -v '#|=' >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: 下载源码与插件
-        run: |
-          chmod +x $CLONE_SH
-          $CLONE_SH
-          # 源码已被移动到当前目录，设置OPENWRT_DIR为当前路径
-          echo "OPENWRT_DIR=$(pwd)" >> $GITHUB_ENV
-          # 校验关键文件，确保脚本执行成功
-          if [ ! -f "$OPENWRT_DIR/scripts/feeds" ]; then
-            echo "❌ 源码移动失败，未找到scripts/feeds文件"
-            exit 1
-          fi
+          - name: 下载源码与插件
+            run: |
+              chmod +x $CLONE_SH
+              # 执行clone.sh时忽略插件克隆错误（避免单插件失败导致整体中断）
+              $CLONE_SH || echo "⚠️ 插件克隆部分失败，但继续执行源码准备流程"
+              # 关键：强制指定OPENWRT_DIR为当前目录（因为clone.sh会把lede内容移到当前目录）
+              echo "OPENWRT_DIR=$(pwd)" >> $GITHUB_ENV
+              # 优化校验逻辑：优先检查lede原始目录（防止移动失败）
+              if [ -f "$(pwd)/lede/scripts/feeds" ]; then
+                # 如果lede目录没删干净，手动移动文件（兼容clone.sh的潜在问题）
+                mv ./lede/* ./
+                rm -rf ./lede
+              fi
+              # 最终校验scripts/feeds是否存在
+              if [ ! -f "$OPENWRT_DIR/scripts/feeds" ]; then
+                echo "❌ 致命错误：未找到scripts/feeds文件，源码克隆/移动失败！"
+                exit 1
+              else
+                echo "✅ 源码目录验证成功，scripts/feeds存在"
+              fi
       
       - name: 升级feeds
         run: |
